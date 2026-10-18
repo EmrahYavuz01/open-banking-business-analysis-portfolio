@@ -66,15 +66,15 @@ into a target operating model supported by standardized APIs, digital consent ma
 
 The following sequence is recommended for reviewing the project:
 
-1. `01-discovery/business-case.md`
-2. `02-process-analysis/as-is-process-analysis.md`
-3. `02-process-analysis/root-cause-analysis.md` and `gap-analysis.md`
-4. `02-process-analysis/to-be-process-design.md`
-5. `04-requirements/brd-business-requirements-document.md`
-6. `04-requirements/epic-and-user-story-model.md` and `acceptance-criteria.md`
-7. `04-requirements/srs-software-requirements-specification.md`
-8. `05-testing/test-case-design.md`
-9. `06-api-specification/swagger.yaml`
+1. [Business Case](01-discovery/business-case.md)
+2. [As-Is Process Analysis](02-process-analysis/as-is-process-analysis.md)
+3. [Root Cause Analysis](02-process-analysis/root-cause-analysis.md) and [Gap Analysis](02-process-analysis/gap-analysis.md)
+4. [To-Be Process Design](02-process-analysis/to-be-process-design.md)
+5. [Business Requirements Document (BRD)](04-requirements/brd-business-requirements-document.md)
+6. [Epic and User Story Model](04-requirements/epic-and-user-story-model.md) and [Acceptance Criteria](04-requirements/acceptance-criteria.md)
+7. [Software Requirements Specification (SRS)](04-requirements/srs-software-requirements-specification.md)
+8. [Test Case Design](05-testing/test-case-design.md)
+9. [OpenAPI / Swagger Specification](06-api-specification/swagger.yaml)
 
 ## Approaches Used
 
