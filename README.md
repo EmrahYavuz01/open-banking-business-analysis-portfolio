@@ -59,15 +59,15 @@ Hesap bilgisi paylaşımının manuel ve dosya bazlı süreçlerle yürütülmes
 
 Projeyi sırasıyla incelemek için önerilen yol:
 
-1. `01-discovery/business-case.md`
-2. `02-process-analysis/as-is-process-analysis.md`
-3. `02-process-analysis/root-cause-analysis.md` ve `gap-analysis.md`
-4. `02-process-analysis/to-be-process-design.md`
-5. `04-requirements/brd-business-requirements-document.md`
-6. `04-requirements/epic-and-user-story-model.md` ve `acceptance-criteria.md`
-7. `04-requirements/srs-software-requirements-specification.md`
-8. `05-testing/test-case-design.md`
-9. `06-api-specification/swagger.yaml`
+1. [`01-discovery/business-case.md`](01-discovery/business-case.md)
+2. [`02-process-analysis/as-is-process-analysis.md`](02-process-analysis/as-is-process-analysis.md)
+3. [`02-process-analysis/root-cause-analysis.md`](02-process-analysis/root-cause-analysis.md) ve [`gap-analysis.md`](02-process-analysis/gap-analysis.md)
+4. [`02-process-analysis/to-be-process-design.md`](02-process-analysis/to-be-process-design.md)
+5. [`04-requirements/brd-business-requirements-document.md`](04-requirements/brd-business-requirements-document.md)
+6. [`04-requirements/epic-and-user-story-model.md`](04-requirements/epic-and-user-story-model.md) ve [`acceptance-criteria.md`](04-requirements/acceptance-criteria.md)
+7. [`04-requirements/srs-software-requirements-specification.md`](04-requirements/srs-software-requirements-specification.md)
+8. [`05-testing/test-case-design.md`](05-testing/test-case-design.md)
+9. [`06-api-specification/swagger.yaml`](06-api-specification/swagger.yaml)
 
 ## Kullanılan Yaklaşımlar
 
