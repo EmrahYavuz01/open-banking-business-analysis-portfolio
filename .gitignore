@@ -1,0 +1,15 @@
+# IDE / OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+target/
+build/
+.env
+.env.*
+!.env.example
+# Never commit credentials, tokens, or account recovery codes
+*recovery-codes*
+*recovery_codes*
+secrets/

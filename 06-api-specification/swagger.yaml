@@ -1,0 +1,2171 @@
+openapi: 3.0.3
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OPEN BANKING – ACCOUNT INFORMATION SERVICE (AIS) API
+# OpenAPI 3.0.3 Specification
+# Traceability: Business Goals → BRD (BR-01..BR-22) → SRS (FR-01..FR-24)
+#              → API Specification → Test Case Design
+# ─────────────────────────────────────────────────────────────────────────────
+
+info:
+  title: Open Banking AIS Platform API
+  version: "1.0.0"
+  description: |
+    ## Open Banking Hesap Bilgisi Paylaşım Platformu
+
+    Bu API, düzenleyici otorite (Açık Bankacılık Yönetmeliği / PSD2 benzeri)
+    gereksinimlerine uygun olarak, yetkilendirilmiş üçüncü taraf sağlayıcıların
+    (TPP) müşteri rızasıyla hesap bilgilerine güvenli erişimini sağlar.
+
+    ### İzlenebilirlik
+    | API Grubu              | İlgili SRS FR | İlgili BRD BR |
+    |------------------------|---------------|---------------|
+    | Consent Management     | FR-01..FR-06  | BR-01..BR-05  |
+    | Account Information    | FR-13..FR-15  | BR-11..BR-13  |
+    | TPP Management         | FR-07..FR-12  | BR-06..BR-10  |
+    | Audit & Logging        | FR-21..FR-22  | BR-19..BR-20  |
+    | OAuth2 / Token         | SEC-01..SEC-08 | BR-15..BR-16  |
+
+    ### Güvenlik
+    Tüm endpoint'ler **OAuth2 Bearer Token** (Authorization Code Flow) ve
+    **TLS 1.2+** zorunluluğuna tabidir. Rıza gerektiren işlemler SCA
+    (Strong Customer Authentication) gerektirir.
+
+    ### Hata Yönetimi
+    Tüm hata yanıtları `ErrorResponse` şemasına uyar (bkz. Components/Schemas).
+  contact:
+    name: Open Banking API Team
+    email: openbanking-api@bank.example.com
+  license:
+    name: Internal — Proprietary
+    url: https://bank.example.com/api-license
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SERVERS
+# ─────────────────────────────────────────────────────────────────────────────
+servers:
+  - url: https://api.bank.example.com/open-banking/v1
+    description: Production
+  - url: https://api-sandbox.bank.example.com/open-banking/v1
+    description: Sandbox (mock data — TPP test ortamı)
+  - url: https://api-uat.bank.example.com/open-banking/v1
+    description: UAT
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECURITY SCHEMES  (SEC-01, SEC-03, SEC-07)
+# ─────────────────────────────────────────────────────────────────────────────
+security:
+  - OAuth2AuthCode: []
+  - BearerAuth: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAGS  (Swagger UI gruplandırması)
+# ─────────────────────────────────────────────────────────────────────────────
+tags:
+  - name: OAuth2
+    description: |
+      Token alma, yenileme ve iptal işlemleri.
+      **SRS:** SEC-01, SEC-08 | **BRD:** BR-15, BR-16
+  - name: Consent Management
+    description: |
+      Müşteri rıza yaşam döngüsü — oluşturma, görüntüleme, iptal, süre yönetimi.
+      **SRS:** FR-01..FR-06 | **BRD:** BR-01..BR-05
+  - name: Account Information (AIS)
+    description: |
+      Hesap detayı, bakiye ve işlem geçmişi sorgulama.
+      **SRS:** FR-13..FR-15 | **BRD:** BR-11..BR-13
+  - name: TPP Management
+    description: |
+      TPP kayıt, sertifika yükleme, onboarding durumu ve kullanım istatistikleri.
+      **SRS:** FR-07..FR-12 | **BRD:** BR-06..BR-10
+  - name: Audit & Logging
+    description: |
+      Denetim izi sorgulama ve regülasyon raporu üretimi.
+      **SRS:** FR-21..FR-22 | **BRD:** BR-19..BR-20
+  - name: Health
+    description: Sistem sağlık durumu (SLA izleme)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ===========================================================================
+  # OAUTH2 — Token Endpoint
+  # ===========================================================================
+  /oauth/token:
+    post:
+      tags: [OAuth2]
+      summary: Access Token veya Refresh Token al
+      operationId: getToken
+      description: |
+        OAuth2 Authorization Code Flow — TPP'nin kullanıcı rızası sonrası
+        access_token ve refresh_token alması.
+
+        **SRS:** SEC-01, SEC-08
+        **BRD:** BR-15
+
+        ### Desteklenen grant_type değerleri
+        - `authorization_code` — İlk token alımı
+        - `refresh_token` — Token yenileme
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+            examples:
+              authorization_code:
+                summary: İlk token alımı
+                value:
+                  grant_type: authorization_code
+                  code: "AUTH_CODE_xyz123"
+                  client_id: "TPP-1001"
+                  client_secret: "secret_abc"
+                  redirect_uri: "https://tpp.example.com/callback"
+              refresh_token:
+                summary: Token yenileme
+                value:
+                  grant_type: refresh_token
+                  refresh_token: "REFRESH_xyz789"
+                  client_id: "TPP-1001"
+                  client_secret: "secret_abc"
+      responses:
+        "200":
+          description: Token başarıyla üretildi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                access_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                refresh_token: "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4..."
+                token_type: "Bearer"
+                expires_in: 3600
+                scope: "accounts balance transactions"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+      security: []
+
+  /oauth/revoke:
+    post:
+      tags: [OAuth2]
+      summary: Token iptal et
+      operationId: revokeToken
+      description: |
+        Access token veya refresh token'ı geçersiz kılar.
+        **SRS:** SEC-08 | **BRD:** BR-03
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token, client_id]
+              properties:
+                token:
+                  type: string
+                  example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                token_type_hint:
+                  type: string
+                  enum: [access_token, refresh_token]
+                  default: access_token
+                client_id:
+                  type: string
+                  example: "TPP-1001"
+      responses:
+        "200":
+          description: Token başarıyla iptal edildi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+              example:
+                message: "Token successfully revoked"
+                timestamp: "2025-04-15T10:30:00Z"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # ===========================================================================
+  # CONSENT MANAGEMENT  (FR-01..FR-06, BR-01..BR-05)
+  # ===========================================================================
+  /consents:
+    post:
+      tags: [Consent Management]
+      summary: Yeni rıza oluştur
+      operationId: createConsent
+      description: |
+        Müşterinin bir TPP'ye belirli veri kapsamında ve süreyle rıza vermesini sağlar.
+        SCA tamamlanmadan bu endpoint çağrılamaz.
+
+        **SRS:** FR-01 | **BRD:** BR-01
+        **Business Rule:** BRULE-01, BRULE-02, BRULE-03, BRULE-08
+      parameters:
+        - $ref: '#/components/parameters/X-Request-ID'
+        - $ref: '#/components/parameters/X-Correlation-ID'
+        - $ref: '#/components/parameters/X-SCA-Completed'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentRequest'
+            example:
+              tppId: "TPP-1001"
+              customerId: "CUST-5001"
+              scope:
+                - balance
+                - transactions
+              validityPeriodDays: 90
+              redirectUri: "https://tpp.example.com/callback"
+              nonce: "a3f8c2d9e1b4"
+      responses:
+        "201":
+          description: Rıza başarıyla oluşturuldu
+          headers:
+            Location:
+              schema:
+                type: string
+              example: "/consents/CNS-20250415-001"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentResponse'
+              example:
+                consentId: "CNS-20250415-001"
+                status: "ACTIVE"
+                tppId: "TPP-1001"
+                customerId: "CUST-5001"
+                scope: ["balance", "transactions"]
+                startDate: "2025-04-15"
+                endDate: "2025-07-14"
+                createdAt: "2025-04-15T10:30:00Z"
+                accessToken: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          description: SCA tamamlanmamış
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "ERR-401-SCA-REQUIRED"
+                errorDescription: "Strong Customer Authentication must be completed before granting consent"
+                timestamp: "2025-04-15T10:30:00Z"
+                traceId: "trace-abc123"
+
+  /consents/{consentId}:
+    get:
+      tags: [Consent Management]
+      summary: Rıza detayı getir
+      operationId: getConsent
+      description: |
+        Belirli bir rızanın mevcut durumunu ve detaylarını getirir.
+        **SRS:** FR-02 | **BRD:** BR-02
+      parameters:
+        - $ref: '#/components/parameters/ConsentId'
+        - $ref: '#/components/parameters/X-Request-ID'
+      responses:
+        "200":
+          description: Rıza detayı
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /consents/{consentId}/revoke:
+    post:
+      tags: [Consent Management]
+      summary: Rıza iptal et
+      operationId: revokeConsent
+      description: |
+        Aktif bir rızayı anlık olarak iptal eder. İptal sonrası ilgili TPP
+        access token'ı geçersiz kılınır. BRULE-04: Müşteri gerekçe sunmak
+        zorunda değildir.
+
+        **SRS:** FR-03 | **BRD:** BR-03
+        **Business Rule:** BRULE-04
+      parameters:
+        - $ref: '#/components/parameters/ConsentId'
+        - $ref: '#/components/parameters/X-Request-ID'
+        - $ref: '#/components/parameters/X-Correlation-ID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: İptal gerekçesi (opsiyonel, BRULE-04 gereği zorunlu değil)
+                  example: "No longer required"
+      responses:
+        "200":
+          description: Rıza başarıyla iptal edildi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentRevokeResponse'
+              example:
+                consentId: "CNS-20250415-001"
+                status: "REVOKED"
+                revokedAt: "2025-04-15T11:00:00Z"
+                message: "Consent successfully revoked. TPP access has been terminated."
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: Rıza zaten iptal edilmiş
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "ERR-409-ALREADY-REVOKED"
+                errorDescription: "Consent CNS-20250415-001 has already been revoked"
+                timestamp: "2025-04-15T11:00:00Z"
+                traceId: "trace-def456"
+
+  /consents/{consentId}/approve:
+    post:
+      tags: [Consent Management]
+      summary: Rıza onayla (SCA sonrası)
+      operationId: approveConsent
+      description: |
+        SCA akışı tamamlandıktan sonra müşterinin rızayı onaylaması.
+        **SRS:** FR-01, FR-18 | **SEC:** SEC-02
+      parameters:
+        - $ref: '#/components/parameters/ConsentId'
+        - $ref: '#/components/parameters/X-Request-ID'
+        - $ref: '#/components/parameters/X-SCA-Completed'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [consentId, scaReference]
+              properties:
+                consentId:
+                  type: string
+                  example: "CNS-20250415-001"
+                scaReference:
+                  type: string
+                  description: SCA akışı tamamlandığında alınan referans ID
+                  example: "SCA-REF-789xyz"
+      responses:
+        "200":
+          description: Rıza onaylandı
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentResponse'
+              example:
+                consentId: "CNS-20250415-001"
+                status: "ACTIVE"
+                startDate: "2025-04-15"
+                endDate: "2025-07-14"
+                approvedAt: "2025-04-15T10:35:00Z"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          description: SCA referansı geçersiz
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "ERR-422-SCA-INVALID"
+                errorDescription: "SCA reference is invalid or expired"
+                timestamp: "2025-04-15T10:35:00Z"
+                traceId: "trace-ghi789"
+
+  /customers/{customerId}/consents:
+    get:
+      tags: [Consent Management]
+      summary: Müşterinin tüm rızalarını listele
+      operationId: listCustomerConsents
+      description: |
+        Bir müşteriye ait tüm aktif/geçmiş rızaları listeler.
+        **SRS:** FR-02, FR-06 | **BRD:** BR-02
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+        - $ref: '#/components/parameters/X-Request-ID'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, REVOKED, EXPIRED, ALL]
+            default: ALL
+          description: Rıza durumuna göre filtrele
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Rıza listesi
+          headers:
+            X-Total-Count:
+              schema:
+                type: integer
+              description: Toplam rıza sayısı
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentListResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # ACCOUNT INFORMATION (AIS)  (FR-13..FR-15, BR-11..BR-13)
+  # ===========================================================================
+  /accounts:
+    get:
+      tags: [Account Information (AIS)]
+      summary: Hesap listesini getir
+      operationId: getAccounts
+      description: |
+        Consent token kapsamındaki müşteriye ait hesapları listeler.
+        Token yalnızca onaylı scope'taki verilere erişim sağlar (data minimization).
+
+        **SRS:** FR-13, FR-14, FR-15 | **BRD:** BR-11, BR-12, BR-13
+        **Business Rule:** BRULE-01, BRULE-02
+      parameters:
+        - $ref: '#/components/parameters/X-Request-ID'
+        - $ref: '#/components/parameters/X-Correlation-ID'
+        - $ref: '#/components/parameters/ConsentHeader'
+      responses:
+        "200":
+          description: Hesap listesi
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountListResponse'
+              example:
+                accounts:
+                  - accountId: "ACC-00012345"
+                    iban: "TR650001001234567891234567"
+                    accountType: "CURRENT"
+                    currency: "TRY"
+                    accountName: "Vadesiz Hesap"
+                    status: "ACTIVE"
+                  - accountId: "ACC-00067890"
+                    iban: "TR650001009876543219876543"
+                    accountType: "SAVINGS"
+                    currency: "USD"
+                    accountName: "Dolar Tasarruf Hesabı"
+                    status: "ACTIVE"
+                links:
+                  self: "/accounts"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/ConsentForbidden'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /accounts/{accountId}:
+    get:
+      tags: [Account Information (AIS)]
+      summary: Hesap detayı getir
+      operationId: getAccountDetails
+      description: |
+        Belirli bir hesabın detay bilgilerini getirir.
+        **SRS:** FR-13 | **BRD:** BR-11
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/X-Request-ID'
+        - $ref: '#/components/parameters/ConsentHeader'
+      responses:
+        "200":
+          description: Hesap detayı
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDetailResponse'
+              example:
+                accountId: "ACC-00012345"
+                iban: "TR650001001234567891234567"
+                accountType: "CURRENT"
+                currency: "TRY"
+                accountName: "Vadesiz Hesap"
+                status: "ACTIVE"
+                openingDate: "2018-03-15"
+                branch:
+                  branchCode: "0001"
+                  branchName: "Merkez Şube"
+                links:
+                  self: "/accounts/ACC-00012345"
+                  balances: "/accounts/ACC-00012345/balances"
+                  transactions: "/accounts/ACC-00012345/transactions"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/ConsentForbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /accounts/{accountId}/balances:
+    get:
+      tags: [Account Information (AIS)]
+      summary: Hesap bakiyesi getir
+      operationId: getAccountBalances
+      description: |
+        Belirli bir hesabın anlık bakiyesini getirir. Yalnızca consent
+        token'ında `balance` scope'u tanımlıysa erişilebilir.
+
+        **SRS:** FR-13, FR-14 | **BRD:** BR-11, BR-12
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/X-Request-ID'
+        - $ref: '#/components/parameters/X-Correlation-ID'
+        - $ref: '#/components/parameters/ConsentHeader'
+      responses:
+        "200":
+          description: Bakiye bilgisi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceResponse'
+              example:
+                accountId: "ACC-00012345"
+                balances:
+                  - balanceType: "AVAILABLE"
+                    amount:
+                      value: 15432.75
+                      currency: "TRY"
+                    lastUpdated: "2025-04-15T10:29:55Z"
+                  - balanceType: "BOOKED"
+                    amount:
+                      value: 16000.00
+                      currency: "TRY"
+                    lastUpdated: "2025-04-15T10:29:55Z"
+                links:
+                  account: "/accounts/ACC-00012345"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/ConsentForbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /accounts/{accountId}/transactions:
+    get:
+      tags: [Account Information (AIS)]
+      summary: İşlem geçmişi getir
+      operationId: getAccountTransactions
+      description: |
+        Belirli bir hesabın işlem geçmişini sayfalı olarak getirir.
+        Yalnızca consent token'ında `transactions` scope'u tanımlıysa erişilebilir.
+
+        **SRS:** FR-13, FR-14 | **BRD:** BR-11, BR-12
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/X-Request-ID'
+        - $ref: '#/components/parameters/ConsentHeader'
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+          example: "2025-01-01"
+          description: Başlangıç tarihi (ISO 8601)
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+          example: "2025-04-15"
+          description: Bitiş tarihi (ISO 8601)
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+        - name: transactionType
+          in: query
+          schema:
+            type: string
+            enum: [CREDIT, DEBIT, ALL]
+            default: ALL
+      responses:
+        "200":
+          description: İşlem listesi
+          headers:
+            X-Total-Count:
+              schema:
+                type: integer
+            X-Page-Count:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionListResponse'
+              example:
+                accountId: "ACC-00012345"
+                transactions:
+                  - transactionId: "TXN-20250415-00001"
+                    bookingDate: "2025-04-15"
+                    valueDate: "2025-04-15"
+                    transactionAmount:
+                      value: -250.00
+                      currency: "TRY"
+                    transactionType: "DEBIT"
+                    creditorName: "Market XYZ"
+                    remittanceInfo: "Alışveriş"
+                  - transactionId: "TXN-20250414-00123"
+                    bookingDate: "2025-04-14"
+                    valueDate: "2025-04-14"
+                    transactionAmount:
+                      value: 5000.00
+                      currency: "TRY"
+                    transactionType: "CREDIT"
+                    debtorName: "Employer ABC"
+                    remittanceInfo: "Maaş Ödemesi"
+                pagination:
+                  page: 1
+                  size: 50
+                  totalCount: 142
+                  totalPages: 3
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/ConsentForbidden'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # ===========================================================================
+  # TPP MANAGEMENT  (FR-07..FR-12, BR-06..BR-10)
+  # ===========================================================================
+  /tpp/register:
+    post:
+      tags: [TPP Management]
+      summary: TPP kayıt başvurusu
+      operationId: registerTpp
+      description: |
+        Developer Portal üzerinden yeni bir TPP kayıt başvurusu oluşturur.
+        Kayıt sonrası durum `PENDING_VERIFICATION` olarak atanır.
+
+        **SRS:** FR-07, FR-08 | **BRD:** BR-06, BR-07
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TppRegistrationRequest'
+            example:
+              companyName: "FinApp Teknoloji A.Ş."
+              contactEmail: "api-team@finapp.example.com"
+              contactPhone: "+90 212 555 0100"
+              website: "https://finapp.example.com"
+              businessType: "ACCOUNT_INFORMATION_SERVICE"
+              redirectUris:
+                - "https://finapp.example.com/callback"
+                - "https://finapp.example.com/callback-alt"
+              description: "Kişisel finans yönetimi uygulaması"
+      responses:
+        "201":
+          description: TPP kaydı oluşturuldu
+          headers:
+            Location:
+              schema:
+                type: string
+              example: "/tpp/TPP-1001"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TppRegistrationResponse'
+              example:
+                tppId: "TPP-1001"
+                status: "PENDING_VERIFICATION"
+                clientId: "client_TPP1001_abc123"
+                createdAt: "2025-04-15T10:00:00Z"
+                message: "Registration successful. Please upload your certificate to proceed."
+                nextStep: "/tpp/TPP-1001/certificate"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "409":
+          description: TPP zaten kayıtlı
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "ERR-409-TPP-DUPLICATE"
+                errorDescription: "A TPP with this email/company is already registered"
+                timestamp: "2025-04-15T10:00:00Z"
+                traceId: "trace-jkl012"
+      security: []
+
+  /tpp/{tppId}:
+    get:
+      tags: [TPP Management]
+      summary: TPP detayı getir
+      operationId: getTpp
+      description: |
+        Bir TPP'nin kayıt bilgilerini, sertifika durumunu ve onboarding
+        aşamasını getirir.
+        **SRS:** FR-07, FR-09 | **BRD:** BR-06, BR-07
+      parameters:
+        - $ref: '#/components/parameters/TppId'
+        - $ref: '#/components/parameters/X-Request-ID'
+      responses:
+        "200":
+          description: TPP detayı
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TppDetailResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /tpp/{tppId}/certificate:
+    put:
+      tags: [TPP Management]
+      summary: Sertifika yükle / güncelle
+      operationId: uploadCertificate
+      description: |
+        TPP'nin eIDAS QWAC/QSEAL formatındaki sertifikasını yükler.
+        Yükleme sonrası otomatik doğrulama başlatılır.
+
+        **SRS:** FR-08, FR-09 | **BRD:** BR-07
+      parameters:
+        - $ref: '#/components/parameters/TppId'
+        - $ref: '#/components/parameters/X-Request-ID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificateUploadRequest'
+            examples:
+              valid_cert:
+                summary: Geçerli sertifika
+                value:
+                  certificateType: "QWAC"
+                  certificateData: "MIIFwTCCA6mgAwIBAgI..."
+                  certificateFormat: "PEM"
+              expired_cert:
+                summary: Süresi dolmuş sertifika (negatif senaryo)
+                value:
+                  certificateType: "QWAC"
+                  certificateData: "MIIExpiredCert..."
+                  certificateFormat: "PEM"
+      responses:
+        "200":
+          description: Sertifika yüklendi, doğrulama başlatıldı
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateUploadResponse'
+              example:
+                tppId: "TPP-1001"
+                certificateId: "CERT-20250415-001"
+                status: "VERIFICATION_IN_PROGRESS"
+                validFrom: "2024-01-01"
+                validTo: "2026-12-31"
+                message: "Certificate received. Automatic verification initiated."
+        "400":
+          description: Geçersiz sertifika formatı veya süresi dolmuş
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                expired:
+                  summary: Süresi dolmuş sertifika
+                  value:
+                    errorCode: "ERR-400-CERT-EXPIRED"
+                    errorDescription: "Certificate validity period has expired (expired: 2024-12-31)"
+                    timestamp: "2025-04-15T10:00:00Z"
+                    traceId: "trace-mno345"
+                invalid_format:
+                  summary: Geçersiz format
+                  value:
+                    errorCode: "ERR-400-CERT-INVALID-FORMAT"
+                    errorDescription: "Certificate format not supported. Accepted formats: PEM, DER"
+                    timestamp: "2025-04-15T10:00:00Z"
+                    traceId: "trace-pqr678"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /tpp/{tppId}/status:
+    get:
+      tags: [TPP Management]
+      summary: TPP onboarding durumu sorgula
+      operationId: getTppStatus
+      description: |
+        TPP'nin onboarding sürecindeki mevcut durumunu getirir.
+        **SRS:** FR-09, FR-12 | **BRD:** BR-07, BR-10
+      parameters:
+        - $ref: '#/components/parameters/TppId'
+        - $ref: '#/components/parameters/X-Request-ID'
+      responses:
+        "200":
+          description: TPP durumu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TppStatusResponse'
+              examples:
+                pending:
+                  summary: Doğrulama bekliyor
+                  value:
+                    tppId: "TPP-1001"
+                    status: "PENDING_VERIFICATION"
+                    certificateStatus: "VERIFICATION_IN_PROGRESS"
+                    onboardingStep: 2
+                    nextAction: "Certificate verification in progress"
+                active:
+                  summary: Aktif (production erişimi var)
+                  value:
+                    tppId: "TPP-1001"
+                    status: "ACTIVE"
+                    certificateStatus: "VALID"
+                    onboardingStep: 5
+                    activatedAt: "2025-04-10T09:00:00Z"
+                suspended:
+                  summary: Askıya alınmış
+                  value:
+                    tppId: "TPP-1001"
+                    status: "SUSPENDED"
+                    suspensionReason: "Certificate expired on 2025-04-01"
+                    suspendedAt: "2025-04-01T00:00:01Z"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /tpp/{tppId}/sandbox:
+    post:
+      tags: [TPP Management]
+      summary: Sandbox erişimi aktive et
+      operationId: activateSandbox
+      description: |
+        Sertifika doğrulaması tamamlanan TPP için sandbox erişimini aktive eder.
+        **SRS:** FR-10 | **BRD:** BR-08
+      parameters:
+        - $ref: '#/components/parameters/TppId'
+        - $ref: '#/components/parameters/X-Request-ID'
+      responses:
+        "200":
+          description: Sandbox erişimi aktive edildi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tppId:
+                    type: string
+                  sandboxBaseUrl:
+                    type: string
+                  sandboxClientId:
+                    type: string
+                  sandboxClientSecret:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+              example:
+                tppId: "TPP-1001"
+                sandboxBaseUrl: "https://api-sandbox.bank.example.com/open-banking/v1"
+                sandboxClientId: "sandbox_client_TPP1001"
+                sandboxClientSecret: "sandbox_secret_xyz"
+                expiresAt: "2025-05-15T23:59:59Z"
+        "400":
+          description: Sertifika doğrulaması tamamlanmamış
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "ERR-400-VERIFICATION-INCOMPLETE"
+                errorDescription: "Certificate verification must be completed before sandbox activation"
+                timestamp: "2025-04-15T10:00:00Z"
+                traceId: "trace-stu901"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /tpp/{tppId}/usage-stats:
+    get:
+      tags: [TPP Management]
+      summary: API kullanım istatistikleri
+      operationId: getTppUsageStats
+      description: |
+        TPP'nin kendi API kullanım metriklerini getirir. TPP yalnızca
+        kendi istatistiklerini görebilir (RBAC enforced).
+        **SRS:** FR-24 | **BRD:** BR-22
+      parameters:
+        - $ref: '#/components/parameters/TppId'
+        - $ref: '#/components/parameters/X-Request-ID'
+        - name: periodFrom
+          in: query
+          schema:
+            type: string
+            format: date
+          example: "2025-04-01"
+        - name: periodTo
+          in: query
+          schema:
+            type: string
+            format: date
+          example: "2025-04-30"
+      responses:
+        "200":
+          description: Kullanım istatistikleri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TppUsageStatsResponse'
+              example:
+                tppId: "TPP-1001"
+                period:
+                  from: "2025-04-01"
+                  to: "2025-04-30"
+                summary:
+                  totalRequests: 12450
+                  successRequests: 12312
+                  errorRequests: 138
+                  avgResponseTimeMs: 187
+                  p95ResponseTimeMs: 412
+                breakdown:
+                  - endpoint: "GET /accounts/{accountId}/balances"
+                    requestCount: 8200
+                    errorCount: 42
+                  - endpoint: "GET /accounts/{accountId}/transactions"
+                    requestCount: 4250
+                    errorCount: 96
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  # ===========================================================================
+  # AUDIT & LOGGING  (FR-21..FR-22, BR-19..BR-20)
+  # ===========================================================================
+  /audit-logs:
+    get:
+      tags: [Audit & Logging]
+      summary: Audit log kayıtlarını sorgula
+      operationId: queryAuditLogs
+      description: |
+        Sistem genelindeki audit log kayıtlarını filtreyerek getirir.
+        Yalnızca Compliance ve InfoSec rollerinin erişimine açıktır.
+
+        **SRS:** FR-21, FR-22 | **BRD:** BR-19, BR-20
+        **Business Rule:** BRULE-07
+      parameters:
+        - $ref: '#/components/parameters/X-Request-ID'
+        - name: correlationId
+          in: query
+          schema:
+            type: string
+          example: "CORR-1744704200000"
+          description: İşlemler arası korelasyon ID'sine göre filtrele
+        - name: eventType
+          in: query
+          schema:
+            type: string
+            enum:
+              - CONSENT_CREATED
+              - CONSENT_APPROVED
+              - CONSENT_REVOKED
+              - CONSENT_EXPIRED
+              - DATA_ACCESS
+              - TOKEN_ISSUED
+              - TOKEN_REVOKED
+              - TPP_REGISTERED
+              - TPP_CERTIFICATE_UPLOADED
+              - TPP_SUSPENDED
+              - UNAUTHORIZED_ACCESS_ATTEMPT
+          description: Olay tipine göre filtrele
+        - name: actor
+          in: query
+          schema:
+            type: string
+          example: "TPP-1001"
+          description: Eylemi gerçekleştiren (TPP ID, Customer ID, System)
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+          example: "2025-04-01T00:00:00Z"
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+          example: "2025-04-15T23:59:59Z"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+      responses:
+        "200":
+          description: Audit log listesi
+          headers:
+            X-Total-Count:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogListResponse'
+              example:
+                logs:
+                  - logId: "LOG-20250415-000001"
+                    timestamp: "2025-04-15T10:30:00.123Z"
+                    eventType: "CONSENT_CREATED"
+                    actor: "CUST-5001"
+                    relatedEntityId: "CNS-20250415-001"
+                    result: "SUCCESS"
+                    correlationId: "CORR-1744704200000"
+                    ipAddress: "10.0.0.1"
+                  - logId: "LOG-20250415-000002"
+                    timestamp: "2025-04-15T10:30:05.456Z"
+                    eventType: "TOKEN_ISSUED"
+                    actor: "TPP-1001"
+                    relatedEntityId: "TOKEN-abc123"
+                    result: "SUCCESS"
+                    correlationId: "CORR-1744704200000"
+                    ipAddress: "203.0.113.45"
+                pagination:
+                  page: 1
+                  size: 50
+                  totalCount: 2
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /audit-logs/{logId}:
+    get:
+      tags: [Audit & Logging]
+      summary: Tek audit log kaydı getir
+      operationId: getAuditLog
+      description: |
+        Belirli bir audit log kaydının tüm detaylarını getirir.
+        **SRS:** FR-21 | **BRD:** BR-19
+      parameters:
+        - name: logId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "LOG-20250415-000001"
+        - $ref: '#/components/parameters/X-Request-ID'
+      responses:
+        "200":
+          description: Audit log detayı
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogEntry'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /audit-logs/reports:
+    post:
+      tags: [Audit & Logging]
+      summary: Regülasyon uyum raporu üret
+      operationId: generateComplianceReport
+      description: |
+        Belirli bir tarih aralığı için regülasyon uyum raporunu oluşturur.
+        Rapor PDF veya CSV formatında indirilebilir.
+
+        **SRS:** FR-22 | **BRD:** BR-20
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComplianceReportRequest'
+            example:
+              periodFrom: "2025-04-01"
+              periodTo: "2025-04-30"
+              format: "PDF"
+              includeEventTypes:
+                - CONSENT_CREATED
+                - CONSENT_REVOKED
+                - DATA_ACCESS
+                - UNAUTHORIZED_ACCESS_ATTEMPT
+      responses:
+        "202":
+          description: Rapor oluşturma başlatıldı (async)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reportId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [PENDING, IN_PROGRESS, COMPLETED, FAILED]
+                  estimatedCompletionTime:
+                    type: string
+                    format: date-time
+                  downloadUrl:
+                    type: string
+              example:
+                reportId: "RPT-20250415-001"
+                status: "IN_PROGRESS"
+                estimatedCompletionTime: "2025-04-15T10:35:00Z"
+                downloadUrl: "/audit-logs/reports/RPT-20250415-001/download"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  # ===========================================================================
+  # HEALTH
+  # ===========================================================================
+  /health:
+    get:
+      tags: [Health]
+      summary: Sistem sağlık durumu
+      operationId: healthCheck
+      description: |
+        API'nin ve bağımlı bileşenlerinin (Core Banking, Consent Mgmt,
+        Audit Platform) sağlık durumunu döner.
+        **SRS:** NFR-01 (Availability)
+      responses:
+        "200":
+          description: Sistem sağlıklı
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "UP"
+                timestamp: "2025-04-15T10:30:00Z"
+                version: "1.0.0"
+                components:
+                  apiGateway:
+                    status: "UP"
+                    responseTimeMs: 12
+                  consentManagement:
+                    status: "UP"
+                    responseTimeMs: 8
+                  coreBanking:
+                    status: "UP"
+                    responseTimeMs: 45
+                  auditPlatform:
+                    status: "UP"
+                    responseTimeMs: 11
+        "503":
+          description: Sistem sağlıksız
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "DEGRADED"
+                timestamp: "2025-04-15T10:30:00Z"
+                components:
+                  coreBanking:
+                    status: "DOWN"
+                    error: "Connection timeout after 5000ms"
+      security: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────────────────────────────────────
+components:
+
+  # ---------------------------------------------------------------------------
+  # SECURITY SCHEMES
+  # ---------------------------------------------------------------------------
+  securitySchemes:
+    OAuth2AuthCode:
+      type: oauth2
+      description: |
+        OAuth2 Authorization Code Flow — TPP'ler için.
+        **SRS:** SEC-01 | RFC 6749 uyumlu.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.bank.example.com/oauth/authorize
+          tokenUrl: https://api.bank.example.com/open-banking/v1/oauth/token
+          refreshUrl: https://api.bank.example.com/open-banking/v1/oauth/token
+          scopes:
+            accounts: Hesap listesi ve detayı
+            balance: Hesap bakiyesi
+            transactions: İşlem geçmişi
+            consents:read: Rıza bilgilerini görüntüle
+            consents:write: Rıza oluştur/iptal et
+            tpp:read: TPP bilgilerini görüntüle
+            audit:read: Audit log görüntüle (Compliance rolü)
+
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT Bearer Token (Consent token'ı — TPP'nin müşteri verisi için aldığı)
+        **SRS:** SEC-08
+
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Sandbox ortamı için alternatif kimlik doğrulama
+
+  # ---------------------------------------------------------------------------
+  # PARAMETERS
+  # ---------------------------------------------------------------------------
+  parameters:
+    ConsentId:
+      name: consentId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^CNS-[0-9]{8}-[0-9]{3,}$'
+      example: "CNS-20250415-001"
+      description: Rıza ID (format CNS-YYYYMMDD-SEQ)
+
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^CUST-[0-9]{4,}$'
+      example: "CUST-5001"
+
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^ACC-[0-9]{8}$'
+      example: "ACC-00012345"
+
+    TppId:
+      name: tppId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^TPP-[0-9]{4,}$'
+      example: "TPP-1001"
+
+    X-Request-ID:
+      name: X-Request-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      example: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+      description: İstek takip ID (idempotency ve log korelasyonu)
+
+    X-Correlation-ID:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+      example: "CORR-1744704200000"
+      description: Çapraz bileşen log korelasyon ID (Audit Platform entegrasyonu)
+
+    X-SCA-Completed:
+      name: X-SCA-Completed
+      in: header
+      required: true
+      schema:
+        type: string
+      example: "SCA-REF-789xyz"
+      description: SCA akışı tamamlandığında alınan referans ID (SEC-02)
+
+    ConsentHeader:
+      name: Consent-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: '^CNS-[0-9]{8}-[0-9]{3,}$'
+      example: "CNS-20250415-001"
+      description: AIS endpoint'leri için consent ID header olarak da iletilebilir
+
+  # ---------------------------------------------------------------------------
+  # HEADERS
+  # ---------------------------------------------------------------------------
+  headers:
+    X-Request-ID:
+      schema:
+        type: string
+        format: uuid
+      description: Yanıt korelasyon ID
+
+  # ---------------------------------------------------------------------------
+  # SCHEMAS  (Reusable Components)
+  # ---------------------------------------------------------------------------
+  schemas:
+
+    # ── TOKEN ─────────────────────────────────────────────────────────────────
+    TokenRequest:
+      type: object
+      required: [grant_type, client_id]
+      properties:
+        grant_type:
+          type: string
+          enum: [authorization_code, refresh_token, client_credentials]
+        code:
+          type: string
+          description: "Zorunlu: grant_type=authorization_code ise"
+        refresh_token:
+          type: string
+          description: "Zorunlu: grant_type=refresh_token ise"
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        redirect_uri:
+          type: string
+          format: uri
+        consent_id:
+          type: string
+          description: Rıza bazlı token için opsiyonel
+
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+          description: JWT format Bearer token
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Saniye cinsinden token ömrü
+          example: 3600
+        scope:
+          type: string
+          description: Onaylanan scope'lar (space-separated)
+          example: "accounts balance transactions"
+
+    # ── CONSENT ───────────────────────────────────────────────────────────────
+    ConsentRequest:
+      type: object
+      required: [tppId, customerId, scope, validityPeriodDays]
+      properties:
+        tppId:
+          type: string
+          pattern: '^TPP-[0-9]{4,}$'
+          example: "TPP-1001"
+        customerId:
+          type: string
+          pattern: '^CUST-[0-9]{4,}$'
+          example: "CUST-5001"
+        scope:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [accounts, balance, transactions]
+          example: ["balance", "transactions"]
+          description: |
+            BRULE-02: Yalnızca müşterinin açıkça onayladığı veri alanları.
+        validityPeriodDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+          example: 90
+          description: "BRULE-03: Azami süre düzenleyici otorite sınırını aşamaz"
+        redirectUri:
+          type: string
+          format: uri
+          example: "https://tpp.example.com/callback"
+        nonce:
+          type: string
+          description: Replay attack koruması için rastgele değer
+          example: "a3f8c2d9e1b4"
+
+    ConsentResponse:
+      type: object
+      required: [consentId, status, tppId, customerId, scope, startDate, endDate]
+      properties:
+        consentId:
+          type: string
+          example: "CNS-20250415-001"
+        status:
+          $ref: '#/components/schemas/ConsentStatus'
+        tppId:
+          type: string
+          example: "TPP-1001"
+        customerId:
+          type: string
+          example: "CUST-5001"
+        scope:
+          type: array
+          items:
+            type: string
+          example: ["balance", "transactions"]
+        startDate:
+          type: string
+          format: date
+          example: "2025-04-15"
+        endDate:
+          type: string
+          format: date
+          example: "2025-07-14"
+        createdAt:
+          type: string
+          format: date-time
+        approvedAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+        accessToken:
+          type: string
+          description: Yalnızca oluşturma yanıtında döner
+        links:
+          $ref: '#/components/schemas/Links'
+
+    ConsentRevokeResponse:
+      type: object
+      properties:
+        consentId:
+          type: string
+        status:
+          type: string
+          enum: [REVOKED]
+        revokedAt:
+          type: string
+          format: date-time
+        message:
+          type: string
+
+    ConsentListResponse:
+      type: object
+      properties:
+        consents:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsentResponse'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        links:
+          $ref: '#/components/schemas/Links'
+
+    ConsentStatus:
+      type: string
+      enum: [ACTIVE, REVOKED, EXPIRED, PENDING_APPROVAL]
+      description: |
+        - ACTIVE: Müşteri onaylamış, geçerlilik süresi dolmamış
+        - REVOKED: Müşteri iptal etmiş (FR-03 / BRULE-04)
+        - EXPIRED: Geçerlilik süresi dolmuş (FR-04)
+        - PENDING_APPROVAL: SCA tamamlanmayı bekliyor
+
+    # ── ACCOUNT ───────────────────────────────────────────────────────────────
+    AccountListResponse:
+      type: object
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountSummary'
+        links:
+          $ref: '#/components/schemas/Links'
+
+    AccountSummary:
+      type: object
+      required: [accountId, iban, accountType, currency]
+      properties:
+        accountId:
+          type: string
+          example: "ACC-00012345"
+        iban:
+          type: string
+          example: "TR650001001234567891234567"
+        accountType:
+          type: string
+          enum: [CURRENT, SAVINGS, TERM_DEPOSIT, CREDIT_CARD]
+        currency:
+          type: string
+          example: "TRY"
+        accountName:
+          type: string
+          example: "Vadesiz Hesap"
+        status:
+          type: string
+          enum: [ACTIVE, CLOSED, DORMANT]
+
+    AccountDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/AccountSummary'
+        - type: object
+          properties:
+            openingDate:
+              type: string
+              format: date
+            branch:
+              type: object
+              properties:
+                branchCode:
+                  type: string
+                branchName:
+                  type: string
+            links:
+              $ref: '#/components/schemas/Links'
+
+    # ── BALANCE ───────────────────────────────────────────────────────────────
+    BalanceResponse:
+      type: object
+      properties:
+        accountId:
+          type: string
+        balances:
+          type: array
+          items:
+            $ref: '#/components/schemas/Balance'
+        links:
+          $ref: '#/components/schemas/Links'
+
+    Balance:
+      type: object
+      required: [balanceType, amount, lastUpdated]
+      properties:
+        balanceType:
+          type: string
+          enum: [AVAILABLE, BOOKED, INTERIM_AVAILABLE, INTERIM_BOOKED]
+        amount:
+          $ref: '#/components/schemas/Amount'
+        lastUpdated:
+          type: string
+          format: date-time
+
+    Amount:
+      type: object
+      required: [value, currency]
+      properties:
+        value:
+          type: number
+          format: double
+          example: 15432.75
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: "TRY"
+
+    # ── TRANSACTION ───────────────────────────────────────────────────────────
+    TransactionListResponse:
+      type: object
+      properties:
+        accountId:
+          type: string
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Transaction:
+      type: object
+      required: [transactionId, bookingDate, transactionAmount, transactionType]
+      properties:
+        transactionId:
+          type: string
+          example: "TXN-20250415-00001"
+        bookingDate:
+          type: string
+          format: date
+        valueDate:
+          type: string
+          format: date
+        transactionAmount:
+          $ref: '#/components/schemas/Amount'
+        transactionType:
+          type: string
+          enum: [CREDIT, DEBIT]
+        creditorName:
+          type: string
+        debtorName:
+          type: string
+        remittanceInfo:
+          type: string
+          description: Açıklama/referans bilgisi
+
+    # ── TPP ───────────────────────────────────────────────────────────────────
+    TppRegistrationRequest:
+      type: object
+      required: [companyName, contactEmail, businessType, redirectUris]
+      properties:
+        companyName:
+          type: string
+          example: "FinApp Teknoloji A.Ş."
+        contactEmail:
+          type: string
+          format: email
+        contactPhone:
+          type: string
+          example: "+90 212 555 0100"
+        website:
+          type: string
+          format: uri
+        businessType:
+          type: string
+          enum: [ACCOUNT_INFORMATION_SERVICE, PAYMENT_INITIATION_SERVICE, BOTH]
+        redirectUris:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uri
+        description:
+          type: string
+          maxLength: 500
+
+    TppRegistrationResponse:
+      type: object
+      properties:
+        tppId:
+          type: string
+        status:
+          $ref: '#/components/schemas/TppStatus'
+        clientId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        message:
+          type: string
+        nextStep:
+          type: string
+
+    TppDetailResponse:
+      type: object
+      properties:
+        tppId:
+          type: string
+        companyName:
+          type: string
+        status:
+          $ref: '#/components/schemas/TppStatus'
+        certificateStatus:
+          type: string
+          enum: [NOT_UPLOADED, VERIFICATION_IN_PROGRESS, VALID, EXPIRED, REVOKED, INVALID]
+        onboardingStep:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: |
+            1: Kayıt, 2: Sertifika, 3: Doğrulama, 4: Sandbox, 5: Production
+        createdAt:
+          type: string
+          format: date-time
+        activatedAt:
+          type: string
+          format: date-time
+        redirectUris:
+          type: array
+          items:
+            type: string
+
+    TppStatusResponse:
+      type: object
+      properties:
+        tppId:
+          type: string
+        status:
+          $ref: '#/components/schemas/TppStatus'
+        certificateStatus:
+          type: string
+        onboardingStep:
+          type: integer
+        nextAction:
+          type: string
+        activatedAt:
+          type: string
+          format: date-time
+        suspendedAt:
+          type: string
+          format: date-time
+        suspensionReason:
+          type: string
+
+    TppStatus:
+      type: string
+      enum:
+        - PENDING_VERIFICATION
+        - CERTIFICATE_UPLOADED
+        - UNDER_COMPLIANCE_REVIEW
+        - SANDBOX_ACCESS
+        - ACTIVE
+        - SUSPENDED
+        - REJECTED
+
+    CertificateUploadRequest:
+      type: object
+      required: [certificateType, certificateData, certificateFormat]
+      properties:
+        certificateType:
+          type: string
+          enum: [QWAC, QSEAL]
+          description: eIDAS sertifika tipi
+        certificateData:
+          type: string
+          description: Base64-encoded sertifika içeriği
+          example: "MIIFwTCCA6mgAwIBAgI..."
+        certificateFormat:
+          type: string
+          enum: [PEM, DER]
+          default: PEM
+
+    CertificateUploadResponse:
+      type: object
+      properties:
+        tppId:
+          type: string
+        certificateId:
+          type: string
+        status:
+          type: string
+          enum: [VERIFICATION_IN_PROGRESS, VALID, INVALID, EXPIRED]
+        validFrom:
+          type: string
+          format: date
+        validTo:
+          type: string
+          format: date
+        message:
+          type: string
+
+    TppUsageStatsResponse:
+      type: object
+      properties:
+        tppId:
+          type: string
+        period:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date
+            to:
+              type: string
+              format: date
+        summary:
+          type: object
+          properties:
+            totalRequests:
+              type: integer
+            successRequests:
+              type: integer
+            errorRequests:
+              type: integer
+            avgResponseTimeMs:
+              type: number
+            p95ResponseTimeMs:
+              type: number
+        breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              endpoint:
+                type: string
+              requestCount:
+                type: integer
+              errorCount:
+                type: integer
+
+    # ── AUDIT ─────────────────────────────────────────────────────────────────
+    AuditLogListResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLogEntry'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    AuditLogEntry:
+      type: object
+      required: [logId, timestamp, eventType, actor, result]
+      properties:
+        logId:
+          type: string
+          example: "LOG-20250415-000001"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-04-15T10:30:00.123Z"
+        eventType:
+          type: string
+          enum:
+            - CONSENT_CREATED
+            - CONSENT_APPROVED
+            - CONSENT_REVOKED
+            - CONSENT_EXPIRED
+            - DATA_ACCESS
+            - TOKEN_ISSUED
+            - TOKEN_REVOKED
+            - TPP_REGISTERED
+            - TPP_CERTIFICATE_UPLOADED
+            - TPP_SUSPENDED
+            - UNAUTHORIZED_ACCESS_ATTEMPT
+        actor:
+          type: string
+          description: İşlemi gerçekleştiren (CUST-xxx, TPP-xxx, SYSTEM)
+          example: "TPP-1001"
+        relatedEntityId:
+          type: string
+          description: İlgili varlık ID (consent, token, account)
+          example: "CNS-20250415-001"
+        result:
+          type: string
+          enum: [SUCCESS, FAILURE, PARTIAL]
+        correlationId:
+          type: string
+          example: "CORR-1744704200000"
+        ipAddress:
+          type: string
+          example: "203.0.113.45"
+        additionalDetails:
+          type: object
+          additionalProperties: true
+          description: Olay tipine özgü ek bilgiler
+
+    ComplianceReportRequest:
+      type: object
+      required: [periodFrom, periodTo, format]
+      properties:
+        periodFrom:
+          type: string
+          format: date
+        periodTo:
+          type: string
+          format: date
+        format:
+          type: string
+          enum: [PDF, CSV, JSON]
+        includeEventTypes:
+          type: array
+          items:
+            type: string
+
+    # ── HEALTH ────────────────────────────────────────────────────────────────
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN, DEGRADED]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+        components:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [UP, DOWN, DEGRADED]
+              responseTimeMs:
+                type: integer
+              error:
+                type: string
+
+    # ── ERROR ─────────────────────────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      required: [errorCode, errorDescription, timestamp]
+      properties:
+        errorCode:
+          type: string
+          description: |
+            Hata kodu (SRS Bölüm 8 — Error Handling Requirements ile uyumlu)
+          example: "ERR-401-01"
+        errorDescription:
+          type: string
+          description: İnsan okunabilir hata açıklaması
+          example: "Invalid or malformed bearer token"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-04-15T10:30:00Z"
+        traceId:
+          type: string
+          description: Destek/hata ayıklama için korelasyon ID
+          example: "trace-abc123"
+        details:
+          type: array
+          description: Alan bazlı validasyon hataları (400 için)
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    # ── COMMON ────────────────────────────────────────────────────────────────
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        size:
+          type: integer
+          example: 50
+        totalCount:
+          type: integer
+          example: 142
+        totalPages:
+          type: integer
+          example: 3
+
+    Links:
+      type: object
+      additionalProperties:
+        type: string
+      example:
+        self: "/accounts/ACC-00012345"
+        balances: "/accounts/ACC-00012345/balances"
+        transactions: "/accounts/ACC-00012345/transactions"
+
+    SuccessMessage:
+      type: object
+      properties:
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+  # ---------------------------------------------------------------------------
+  # RESPONSES  (Reusable)
+  # ---------------------------------------------------------------------------
+  responses:
+
+    BadRequest:
+      description: Geçersiz istek — validasyon hatası (SRS ERR-400-VALIDATION)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errorCode: "ERR-400-VALIDATION"
+            errorDescription: "Request validation failed"
+            timestamp: "2025-04-15T10:30:00Z"
+            traceId: "trace-abc123"
+            details:
+              - field: "validityPeriodDays"
+                message: "Must be between 1 and 365"
+              - field: "scope"
+                message: "At least one scope must be specified"
+
+    Unauthorized:
+      description: Kimlik doğrulama başarısız (SRS ERR-401-01 veya ERR-401-02)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalid_token:
+              summary: Geçersiz token
+              value:
+                errorCode: "ERR-401-01"
+                errorDescription: "Invalid or malformed bearer token"
+                timestamp: "2025-04-15T10:30:00Z"
+                traceId: "trace-inv001"
+            expired_token:
+              summary: Süresi dolmuş token
+              value:
+                errorCode: "ERR-401-02"
+                errorDescription: "Access token has expired. Please refresh."
+                timestamp: "2025-04-15T10:30:00Z"
+                traceId: "trace-exp001"
+            invalid_certificate:
+              summary: Geçersiz sertifika
+              value:
+                errorCode: "ERR-401-03"
+                errorDescription: "TPP certificate is invalid or has been revoked"
+                timestamp: "2025-04-15T10:30:00Z"
+                traceId: "trace-cert001"
+
+    Forbidden:
+      description: Erişim yetkisi yok (SRS ERR-403-03)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errorCode: "ERR-403-03"
+            errorDescription: "Insufficient permissions. Required role: COMPLIANCE"
+            timestamp: "2025-04-15T10:30:00Z"
+            traceId: "trace-rbac001"
+
+    ConsentForbidden:
+      description: Rıza geçersiz, iptal edilmiş veya süresi dolmuş
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            revoked:
+              summary: Rıza iptal edilmiş (ERR-403-02)
+              value:
+                errorCode: "ERR-403-02"
+                errorDescription: "Consent CNS-20250415-001 has been revoked by the customer"
+                timestamp: "2025-04-15T10:30:00Z"
+                traceId: "trace-rev001"
+            expired:
+              summary: Rıza süresi dolmuş (ERR-403-01)
+              value:
+                errorCode: "ERR-403-01"
+                errorDescription: "Consent CNS-20250415-001 has expired on 2025-07-14"
+                timestamp: "2025-04-15T10:30:00Z"
+                traceId: "trace-exp002"
+            insufficient_scope:
+              summary: Yetersiz kapsam
+              value:
+                errorCode: "ERR-403-INSUFFICIENT-SCOPE"
+                errorDescription: "Token scope does not include 'transactions'. Granted scopes: [balance]"
+                timestamp: "2025-04-15T10:30:00Z"
+                traceId: "trace-scope001"
+
+    NotFound:
+      description: Kaynak bulunamadı
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errorCode: "ERR-404-NOT-FOUND"
+            errorDescription: "Resource not found"
+            timestamp: "2025-04-15T10:30:00Z"
+            traceId: "trace-nf001"
+
+    TooManyRequests:
+      description: Rate limit aşıldı (SRS ERR-429-01, SEC-05)
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Saniye cinsinden bekleme süresi
+          example: 60
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          example: 100
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          example: 0
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+          description: Rate limit sıfırlanma zamanı (Unix timestamp)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errorCode: "ERR-429-01"
+            errorDescription: "Rate limit exceeded. Maximum 100 requests per minute."
+            timestamp: "2025-04-15T10:30:00Z"
+            traceId: "trace-rl001"
+
+    ServiceUnavailable:
+      description: Servis geçici olarak kullanılamıyor (SRS ERR-503-01)
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          example: 30
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errorCode: "ERR-503-01"
+            errorDescription: "Core Banking service is temporarily unavailable. Please retry after 30 seconds."
+            timestamp: "2025-04-15T10:30:00Z"
+            traceId: "trace-svc001"
